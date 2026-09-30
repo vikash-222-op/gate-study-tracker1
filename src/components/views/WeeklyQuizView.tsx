@@ -180,12 +180,18 @@ export const WeeklyQuizView: React.FC = () => {
 
   const handleInlineNumberChange = async (
     item: WeeklyQuizItem,
-    field: 'totalQuestions' | 'correct' | 'wrong' | 'skipped' | 'fullMarks' | 'netMarks',
+    field: 'totalQuestions' | 'correct' | 'wrong' | 'skipped' | 'fullMarks' | 'netMarks' | 'accuracy',
     valueStr: string
   ) => {
     const target = await ensureRealWeeklyQuiz(item);
     const parsed = valueStr.trim() === '' ? undefined : parseFloat(valueStr);
     const updated: WeeklyQuizItem = { ...target, [field]: parsed };
+
+    // If user explicitly set accuracy, commit it directly
+    if (field === 'accuracy') {
+      await updateWeeklyQuiz(updated);
+      return;
+    }
 
     const cQ = updated.correct !== undefined ? updated.correct : target.correct;
     const wQ = updated.wrong !== undefined ? updated.wrong : target.wrong;
@@ -195,10 +201,10 @@ export const WeeklyQuizView: React.FC = () => {
     if (cQ !== undefined || wQ !== undefined) {
       updated.attempted = (cQ || 0) + (wQ || 0);
     }
-    if (fM !== undefined && fM > 0 && nM !== undefined) {
-      updated.accuracy = Math.round(Math.max(0, Math.min(100, (nM / fM) * 100)));
-    } else if (cQ !== undefined && (cQ + (wQ || 0)) > 0) {
+    if (cQ !== undefined && (cQ + (wQ || 0)) > 0) {
       updated.accuracy = Math.round((cQ / (cQ + (wQ || 0))) * 100);
+    } else if (fM !== undefined && fM > 0 && nM !== undefined) {
+      updated.accuracy = Math.round(Math.max(0, Math.min(100, (nM / fM) * 100)));
     }
 
     await updateWeeklyQuiz(updated);
@@ -745,23 +751,34 @@ export const WeeklyQuizView: React.FC = () => {
                         />
                       </td>
 
-                      {/* 12. Accuracy % */}
+                      {/* 12. Accuracy % (Editable with Keyboard!) */}
                       <td className="py-2 px-2 text-center font-mono whitespace-nowrap">
-                        {item.accuracy !== undefined ? (
-                          <span
-                            className={`inline-flex px-1.5 py-0.5 rounded text-[11px] font-bold ${
-                              item.accuracy >= 80
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                                : item.accuracy >= 60
-                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                                : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                        <div className="inline-flex items-center gap-0.5">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="any"
+                            defaultValue={item.accuracy !== undefined ? item.accuracy : ''}
+                            key={`qacc_${item.id}_${item.accuracy}`}
+                            onBlur={(e) => handleInlineNumberChange(item, 'accuracy', e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                            }}
+                            placeholder="—"
+                            className={`w-14 px-1.5 py-1 text-center font-mono text-xs font-bold rounded focus:bg-white dark:focus:bg-slate-800 border focus:outline-hidden transition-colors ${
+                              item.accuracy !== undefined
+                                ? item.accuracy >= 80
+                                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 focus:border-emerald-500'
+                                  : item.accuracy >= 60
+                                  ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-800 focus:border-amber-500'
+                                  : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200 dark:border-rose-800 focus:border-rose-500'
+                                : 'bg-transparent text-slate-700 dark:text-slate-300 border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-sky-500'
                             }`}
-                          >
-                            {item.accuracy}%
-                          </span>
-                        ) : (
-                          '—'
-                        )}
+                            title="Enter Accuracy % (or auto-calculated from Correct/Total)"
+                          />
+                          <span className="text-[11px] text-slate-400 font-bold">%</span>
+                        </div>
                       </td>
 
                       {/* 13. Time Taken (Editable with Keyboard!) */}
@@ -771,8 +788,12 @@ export const WeeklyQuizView: React.FC = () => {
                           defaultValue={item.timeTaken || ''}
                           key={`qtt_${item.id}_${item.timeTaken}`}
                           onBlur={(e) => handleInlineStringChange(item, 'timeTaken', e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                          }}
                           placeholder="e.g. 20m"
-                          className="w-18 px-1.5 py-1 text-center font-mono text-xs bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-sky-500 rounded text-slate-800 dark:text-slate-200 focus:outline-hidden"
+                          className="w-20 px-2 py-1 text-center font-mono text-xs bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-sky-500 rounded text-slate-800 dark:text-slate-200 focus:outline-hidden"
+                          title="Enter time taken (e.g. 20m, 45 mins, 1h 10m)"
                         />
                       </td>
 

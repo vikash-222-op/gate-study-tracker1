@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#1e1b4b"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background with rounded corners -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <!-- Subtle glow inner circle -->
+  <circle cx="256" cy="256" r="190" fill="#6366f1" opacity="0.15"/>
+
+  <!-- Graduation Cap Icon -->
+  <g filter="url(#shadow)" transform="translate(256, 210)">
+    <!-- Mortarboard cap top diamond -->
+    <path d="M 0 -75 L 140 -15 L 0 45 L -140 -15 Z" fill="#ffffff"/>
+    
+    <!-- Cap skull cap base -->
+    <path d="M -80 0 L -80 40 C -80 85 80 85 80 40 L 80 0 C 60 20 -60 20 -80 0 Z" fill="#e0e7ff"/>
+    
+    <!-- Tassel ribbon -->
+    <path d="M 0 -15 C 60 -15 110 30 115 65" fill="none" stroke="url(#gold)" stroke-width="8" stroke-linecap="round"/>
+    
+    <!-- Tassel hanging bob -->
+    <circle cx="115" cy="72" r="10" fill="url(#gold)"/>
+    <path d="M 115 82 L 115 115" stroke="url(#gold)" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  <!-- GATE 2027 Typography -->
+  <text x="256" y="380" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="52" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="4">
+    GATE 2027
+  </text>
+  <text x="256" y="420" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="20" font-weight="700" fill="#a5b4fc" text-anchor="middle" letter-spacing="3">
+    PREPARATION SYSTEM
+  </text>
+</svg>

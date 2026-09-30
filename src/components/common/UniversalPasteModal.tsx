@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ClipboardPaste, CheckCircle2, AlertCircle, FileSpreadsheet, ArrowRight } from 'lucide-react';
+import { ClipboardPaste, CheckCircle2, AlertCircle, FileSpreadsheet, ArrowRight, BookOpen } from 'lucide-react';
 import { Modal } from './Modal';
 import {
   parsePastedSpreadsheet,
@@ -9,7 +9,8 @@ import {
   mapToWeeklyQuiz,
   mapToTestTracker,
   mapToPlanning,
-  mapToDailyProgress
+  mapToDailyProgress,
+  STANDARD_GATE_SUBJECTS
 } from '../../services/excelEngine';
 import { useApp } from '../../context/AppContext';
 
@@ -27,6 +28,7 @@ interface Props {
   onClose: () => void;
   targetSection: PasteTargetSection;
   onSuccess?: (count: number) => void;
+  initialSubject?: string;
 }
 
 const SECTION_TITLES: Record<PasteTargetSection, string> = {
@@ -39,11 +41,23 @@ const SECTION_TITLES: Record<PasteTargetSection, string> = {
   daily_progress: 'Daily Progress'
 };
 
+const POPULAR_SUBJECTS = [
+  'C Programming',
+  'Discrete Mathematics',
+  'Operating Systems',
+  'DBMS',
+  'Computer Networks',
+  'Algorithms',
+  'Data Structures',
+  'Theory of Computation'
+];
+
 export const UniversalPasteModal: React.FC<Props> = ({
   isOpen,
   onClose,
   targetSection,
-  onSuccess
+  onSuccess,
+  initialSubject
 }) => {
   const { importBulkData } = useApp();
   const [pastedText, setPastedText] = useState('');
@@ -52,19 +66,24 @@ export const UniversalPasteModal: React.FC<Props> = ({
   const [previewItems, setPreviewItems] = useState<any[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [selectedSubject, setSelectedSubject] = useState<string>('');
 
   useEffect(() => {
-    if (!isOpen) {
+    if (isOpen) {
+      if (initialSubject && initialSubject !== 'All') {
+        setSelectedSubject(initialSubject);
+      }
+    } else {
       setPastedText('');
       setParsedHeaders([]);
       setParsedRows([]);
       setPreviewItems([]);
       setStatusMessage(null);
+      setSelectedSubject('');
     }
-  }, [isOpen]);
+  }, [isOpen, initialSubject]);
 
-  const handleTextChange = (text: string) => {
-    setPastedText(text);
+  const recomputeMapping = (text: string, subjectOverride: string) => {
     if (!text.trim()) {
       setParsedHeaders([]);
       setParsedRows([]);
@@ -76,22 +95,36 @@ export const UniversalPasteModal: React.FC<Props> = ({
     setParsedHeaders(headers);
     setParsedRows(rows);
 
+    const effectiveSubj = subjectOverride.trim() || undefined;
+
     let mapped: any[] = [];
     switch (targetSection) {
       case 'lecture_tracker':
-        mapped = mapToLectureTracker(rows);
+        mapped = mapToLectureTracker(rows, effectiveSubj);
+        if (effectiveSubj) {
+          mapped = mapped.map(item => ({ ...item, subject: effectiveSubj }));
+        }
         break;
       case 'pyq_tracker':
         mapped = mapToPYQTracker(rows);
+        if (effectiveSubj) {
+          mapped = mapped.map(item => ({ ...item, subject: effectiveSubj }));
+        }
         break;
       case 'revision_tracker':
-        mapped = mapToRevisionTracker(rows);
+        mapped = mapToRevisionTracker(rows, effectiveSubj);
+        if (effectiveSubj) {
+          mapped = mapped.map(item => ({ ...item, subject: effectiveSubj }));
+        }
         break;
       case 'weekly_quiz':
         mapped = mapToWeeklyQuiz(rows);
         break;
       case 'test_tracker':
         mapped = mapToTestTracker(rows);
+        if (effectiveSubj) {
+          mapped = mapped.map(item => ({ ...item, subject: item.subject || effectiveSubj }));
+        }
         break;
       case 'planning':
         mapped = mapToPlanning(rows);
@@ -101,6 +134,16 @@ export const UniversalPasteModal: React.FC<Props> = ({
         break;
     }
     setPreviewItems(mapped);
+  };
+
+  const handleTextChange = (text: string) => {
+    setPastedText(text);
+    recomputeMapping(text, selectedSubject);
+  };
+
+  const handleSubjectChange = (newSubj: string) => {
+    setSelectedSubject(newSubj);
+    recomputeMapping(pastedText, newSubj);
   };
 
   const handleImport = async () => {
@@ -153,6 +196,54 @@ export const UniversalPasteModal: React.FC<Props> = ({
       maxWidth="2xl"
     >
       <div className="space-y-4 text-xs">
+        {/* Subject Target Selector */}
+        {(targetSection === 'lecture_tracker' || targetSection === 'pyq_tracker' || targetSection === 'revision_tracker' || targetSection === 'test_tracker') && (
+          <div className="p-3 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-200">
+                <BookOpen className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <span>Target Subject:</span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
+                  (Assigns subject to all rows, e.g. C Programming)
+                </span>
+              </div>
+              <select
+                value={selectedSubject}
+                onChange={(e) => handleSubjectChange(e.target.value)}
+                className="px-2.5 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-slate-900 dark:text-white font-medium focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="">Auto-Detect / Keep Original</option>
+                {STANDARD_GATE_SUBJECTS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {/* Quick Pick Chips */}
+            <div className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-indigo-100 dark:border-indigo-900/40">
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Quick Pick:</span>
+              {POPULAR_SUBJECTS.map(subj => {
+                const isActive = selectedSubject === subj;
+                return (
+                  <button
+                    key={subj}
+                    type="button"
+                    onClick={() => handleSubjectChange(isActive ? '' : subj)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+                      isActive
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                    }`}
+                  >
+                    {subj}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div>
           <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
             Paste Data (Tabs, columns, headers, and hyperlinks are detected automatically):
@@ -209,6 +300,41 @@ export const UniversalPasteModal: React.FC<Props> = ({
                 </tbody>
               </table>
             </div>
+
+            {/* Mapped Result Preview */}
+            {previewItems.length > 0 && (
+              <div className="p-2.5 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-800/60 space-y-1.5">
+                <div className="text-[11px] font-semibold text-indigo-900 dark:text-indigo-200 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    How records will be saved:
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    Subject will be: <strong className="text-indigo-600 dark:text-indigo-400">{previewItems[0]?.subject || 'General'}</strong>
+                  </span>
+                </div>
+                <div className="space-y-1 max-h-28 overflow-y-auto">
+                  {previewItems.slice(0, 3).map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="text-[11px] bg-white dark:bg-slate-800 px-2 py-1.5 rounded border border-indigo-100 dark:border-indigo-900/40 flex items-center justify-between gap-2"
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 shrink-0">
+                          {item.subject || 'General'}
+                        </span>
+                        <span className="font-medium text-slate-800 dark:text-slate-200 truncate">
+                          {item.module || item.lectureTitle || item.topic || item.quizName || item.testName || `Row ${idx + 1}`}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono shrink-0">
+                        {item.revision1Date ? `R1: ${item.revision1Date}` : item.testDate ? item.testDate : item.duration ? item.duration : ''}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -213,6 +213,23 @@ export const LectureTrackerView: React.FC = () => {
     await updateLecture({ ...target, doneDate: newDate });
   };
 
+  const handleQuickSubjectChange = async (item: LectureItem, newSubject: string) => {
+    if (!newSubject) return;
+    const target = await ensureRealLecture(item);
+    await updateLecture({ ...target, subject: newSubject.trim() });
+  };
+
+  const handleBulkSetSubject = async (newSubject: string) => {
+    if (!newSubject || selectedIds.size === 0) return;
+    for (const id of selectedIds) {
+      const target = state.lectureTracker.find(l => l.id === id);
+      if (target) {
+        await updateLecture({ ...target, subject: newSubject.trim() });
+      }
+    }
+    setSelectedIds(new Set());
+  };
+
   const handleToggleNotes = async (item: LectureItem) => {
     const target = await ensureRealLecture(item);
     toggleLectureNotes(target.id);
@@ -469,6 +486,32 @@ export const LectureTrackerView: React.FC = () => {
         itemLabel="lectures"
       />
 
+      {/* Bulk Set Subject Bar if any lectures are selected */}
+      {selectedIds.size > 0 && (
+        <div className="bg-indigo-50/80 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 rounded-xl px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs shadow-2xs animate-in fade-in duration-150">
+          <span className="font-semibold text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
+            <span>🏷️ Assign Subject to {selectedIds.size} selected lectures:</span>
+          </span>
+          <div className="flex items-center gap-2">
+            <select
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleBulkSetSubject(e.target.value);
+                  e.target.value = '';
+                }
+              }}
+              className="px-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-indigo-300 dark:border-indigo-700 rounded-lg font-bold text-indigo-700 dark:text-indigo-300 cursor-pointer shadow-2xs"
+            >
+              <option value="">Select Subject (e.g. C Programming)...</option>
+              {allAvailableSubjects.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
       {/* Lectures Table: Exact Logical Order */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
@@ -576,14 +619,28 @@ export const LectureTrackerView: React.FC = () => {
                       </td>
 
                       {/* 1. Subject */}
-                      <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white whitespace-nowrap">
+                      <td className="py-2 px-3 font-semibold text-slate-900 dark:text-white whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           {item.isSample && (
                             <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                               SAMPLE
                             </span>
                           )}
-                          <span>{item.subject || '—'}</span>
+                          {!item.subject || item.subject === '—' ? (
+                            <select
+                              value=""
+                              onChange={(e) => handleQuickSubjectChange(item, e.target.value)}
+                              className="px-2 py-1 text-xs font-bold bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300 rounded cursor-pointer"
+                              title="Set Subject for this lecture"
+                            >
+                              <option value="">⚠️ Set Subject...</option>
+                              {allAvailableSubjects.map(s => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span>{item.subject}</span>
+                          )}
                         </div>
                       </td>
 
@@ -713,6 +770,7 @@ export const LectureTrackerView: React.FC = () => {
         isOpen={isPasteModalOpen}
         onClose={() => setIsPasteModalOpen(false)}
         targetSection="lecture_tracker"
+        initialSubject={selectedSubject !== 'All' ? selectedSubject : ''}
       />
 
       {/* Add / Edit Modal */}

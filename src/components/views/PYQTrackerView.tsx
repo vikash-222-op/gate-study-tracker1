@@ -825,6 +825,7 @@ export const PYQTrackerView: React.FC = () => {
         isOpen={isPasteModalOpen}
         onClose={() => setIsPasteModalOpen(false)}
         targetSection="pyq_tracker"
+        initialSubject={selectedSubject !== 'All' ? selectedSubject : ''}
       />
 
       {/* Bulk Delete Confirmation Dialog */}

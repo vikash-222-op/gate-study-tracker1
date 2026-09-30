@@ -178,6 +178,41 @@ export const WeeklyQuizView: React.FC = () => {
     });
   };
 
+  const handleInlineNumberChange = async (
+    item: WeeklyQuizItem,
+    field: 'totalQuestions' | 'correct' | 'wrong' | 'skipped' | 'fullMarks' | 'netMarks',
+    valueStr: string
+  ) => {
+    const target = await ensureRealWeeklyQuiz(item);
+    const parsed = valueStr.trim() === '' ? undefined : parseFloat(valueStr);
+    const updated: WeeklyQuizItem = { ...target, [field]: parsed };
+
+    const cQ = updated.correct !== undefined ? updated.correct : target.correct;
+    const wQ = updated.wrong !== undefined ? updated.wrong : target.wrong;
+    const fM = updated.fullMarks !== undefined ? updated.fullMarks : target.fullMarks;
+    const nM = updated.netMarks !== undefined ? updated.netMarks : target.netMarks;
+
+    if (cQ !== undefined || wQ !== undefined) {
+      updated.attempted = (cQ || 0) + (wQ || 0);
+    }
+    if (fM !== undefined && fM > 0 && nM !== undefined) {
+      updated.accuracy = Math.round(Math.max(0, Math.min(100, (nM / fM) * 100)));
+    } else if (cQ !== undefined && (cQ + (wQ || 0)) > 0) {
+      updated.accuracy = Math.round((cQ / (cQ + (wQ || 0))) * 100);
+    }
+
+    await updateWeeklyQuiz(updated);
+  };
+
+  const handleInlineStringChange = async (
+    item: WeeklyQuizItem,
+    field: 'quizName' | 'topicCovered' | 'testDate' | 'timeTaken',
+    value: string
+  ) => {
+    const target = await ensureRealWeeklyQuiz(item);
+    await updateWeeklyQuiz({ ...target, [field]: value.trim() });
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     let linkField: any = undefined;
@@ -590,64 +625,128 @@ export const WeeklyQuizView: React.FC = () => {
                       </td>
 
                       {/* 2. Quiz Name */}
-                      <td className={`py-3 px-4 font-semibold text-slate-900 dark:text-white max-w-xs ${isDone ? 'line-through text-slate-400' : ''}`}>
-                        <div className="flex items-center gap-1.5 truncate" title={item.quizName}>
+                      <td className="py-2 px-3 font-semibold text-slate-900 dark:text-white min-w-[160px]">
+                        <div className="flex items-center gap-1.5">
                           {item.isSample && (
                             <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 shrink-0 no-underline">
                               SAMPLE
                             </span>
                           )}
-                          <span className="truncate">{item.quizName}</span>
+                          <input
+                            type="text"
+                            defaultValue={item.quizName || ''}
+                            key={`qname_${item.id}_${item.quizName}`}
+                            onBlur={(e) => handleInlineStringChange(item, 'quizName', e.target.value)}
+                            placeholder="Quiz name..."
+                            className="w-full px-1.5 py-1 text-xs font-semibold bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-sky-500 rounded text-slate-900 dark:text-white focus:outline-hidden"
+                          />
                         </div>
                       </td>
 
                       {/* 3. Topic Covered */}
-                      <td className={`py-3 px-3 text-slate-600 dark:text-slate-400 max-w-[160px] truncate ${isDone ? 'line-through text-slate-400' : ''}`} title={item.topicCovered}>
-                        {item.topicCovered || '—'}
+                      <td className="py-2 px-2 min-w-[140px]">
+                        <input
+                          type="text"
+                          defaultValue={item.topicCovered || ''}
+                          key={`qtop_${item.id}_${item.topicCovered}`}
+                          onBlur={(e) => handleInlineStringChange(item, 'topicCovered', e.target.value)}
+                          placeholder="Topic..."
+                          className="w-full px-1.5 py-1 text-xs bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-sky-500 rounded text-slate-700 dark:text-slate-300 focus:outline-hidden"
+                        />
                       </td>
 
                       {/* 4. Quiz Link */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                      <td className="py-2 px-2 text-center whitespace-nowrap">
                         <HyperlinkView value={item.quizLink} defaultLabel="Start" />
                       </td>
 
                       {/* 5. Test Date */}
-                      <td className="py-3 px-3 text-center font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                        {item.testDate || '—'}
+                      <td className="py-2 px-2 text-center whitespace-nowrap">
+                        <input
+                          type="date"
+                          defaultValue={item.testDate || ''}
+                          key={`qdate_${item.id}_${item.testDate}`}
+                          onChange={(e) => handleInlineStringChange(item, 'testDate', e.target.value)}
+                          className="text-xs font-mono bg-transparent border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-sky-500 rounded px-1 py-0.5 text-slate-700 dark:text-slate-300 cursor-pointer focus:outline-hidden"
+                        />
                       </td>
 
-                      {/* 6. Total Question */}
-                      <td className="py-3 px-3 text-center font-mono whitespace-nowrap font-medium">
-                        {item.totalQuestions !== undefined ? item.totalQuestions : '—'}
+                      {/* 6. Total Question (Editable with Keyboard!) */}
+                      <td className="py-2 px-2 text-center whitespace-nowrap">
+                        <input
+                          type="number"
+                          defaultValue={item.totalQuestions !== undefined ? item.totalQuestions : ''}
+                          key={`tq_${item.id}_${item.totalQuestions}`}
+                          onBlur={(e) => handleInlineNumberChange(item, 'totalQuestions', e.target.value)}
+                          placeholder="—"
+                          className="w-14 px-1.5 py-1 text-center font-mono text-xs bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-sky-500 rounded text-slate-800 dark:text-slate-200 focus:outline-hidden"
+                        />
                       </td>
 
-                      {/* 7. Correct */}
-                      <td className="py-3 px-3 text-center font-mono whitespace-nowrap font-bold text-emerald-600 dark:text-emerald-400">
-                        {item.correct !== undefined ? item.correct : '—'}
+                      {/* 7. Correct (Editable with Keyboard!) */}
+                      <td className="py-2 px-2 text-center whitespace-nowrap">
+                        <input
+                          type="number"
+                          defaultValue={item.correct !== undefined ? item.correct : ''}
+                          key={`qc_${item.id}_${item.correct}`}
+                          onBlur={(e) => handleInlineNumberChange(item, 'correct', e.target.value)}
+                          placeholder="—"
+                          className="w-14 px-1.5 py-1 text-center font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-emerald-500 rounded text-xs focus:outline-hidden"
+                        />
                       </td>
 
-                      {/* 8. Wrong */}
-                      <td className="py-3 px-3 text-center font-mono whitespace-nowrap font-bold text-rose-500 dark:text-rose-400">
-                        {item.wrong !== undefined ? item.wrong : '—'}
+                      {/* 8. Wrong (Editable with Keyboard!) */}
+                      <td className="py-2 px-2 text-center whitespace-nowrap">
+                        <input
+                          type="number"
+                          defaultValue={item.wrong !== undefined ? item.wrong : ''}
+                          key={`qw_${item.id}_${item.wrong}`}
+                          onBlur={(e) => handleInlineNumberChange(item, 'wrong', e.target.value)}
+                          placeholder="—"
+                          className="w-14 px-1.5 py-1 text-center font-mono font-bold text-rose-500 dark:text-rose-400 bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-rose-500 rounded text-xs focus:outline-hidden"
+                        />
                       </td>
 
-                      {/* 9. Skipped */}
-                      <td className="py-3 px-3 text-center font-mono whitespace-nowrap font-bold text-amber-500 dark:text-amber-400">
-                        {item.skipped !== undefined ? item.skipped : '—'}
+                      {/* 9. Skipped (Editable with Keyboard!) */}
+                      <td className="py-2 px-2 text-center whitespace-nowrap">
+                        <input
+                          type="number"
+                          defaultValue={item.skipped !== undefined ? item.skipped : ''}
+                          key={`qs_${item.id}_${item.skipped}`}
+                          onBlur={(e) => handleInlineNumberChange(item, 'skipped', e.target.value)}
+                          placeholder="—"
+                          className="w-14 px-1.5 py-1 text-center font-mono font-bold text-amber-500 dark:text-amber-400 bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-amber-500 rounded text-xs focus:outline-hidden"
+                        />
                       </td>
 
-                      {/* 10. Full Marks */}
-                      <td className="py-3 px-3 text-center font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                        {item.fullMarks !== undefined ? item.fullMarks : '—'}
+                      {/* 10. Full Marks (Editable with Keyboard!) */}
+                      <td className="py-2 px-2 text-center whitespace-nowrap">
+                        <input
+                          type="number"
+                          step="any"
+                          defaultValue={item.fullMarks !== undefined ? item.fullMarks : ''}
+                          key={`qfm_${item.id}_${item.fullMarks}`}
+                          onBlur={(e) => handleInlineNumberChange(item, 'fullMarks', e.target.value)}
+                          placeholder="—"
+                          className="w-16 px-1.5 py-1 text-center font-mono text-xs bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-sky-500 rounded text-slate-800 dark:text-slate-200 focus:outline-hidden"
+                        />
                       </td>
 
-                      {/* 11. Net Marks */}
-                      <td className="py-3 px-3 text-center font-mono font-bold text-sky-600 dark:text-sky-400 whitespace-nowrap">
-                        {item.netMarks !== undefined ? item.netMarks : '—'}
+                      {/* 11. Net Marks (Editable with Keyboard!) */}
+                      <td className="py-2 px-2 text-center whitespace-nowrap">
+                        <input
+                          type="number"
+                          step="any"
+                          defaultValue={item.netMarks !== undefined ? item.netMarks : ''}
+                          key={`qnm_${item.id}_${item.netMarks}`}
+                          onBlur={(e) => handleInlineNumberChange(item, 'netMarks', e.target.value)}
+                          placeholder="—"
+                          className="w-16 px-1.5 py-1 text-center font-mono font-bold text-sky-600 dark:text-sky-400 bg-sky-50/50 dark:bg-sky-950/20 hover:bg-sky-100/50 dark:hover:bg-sky-900/40 focus:bg-white dark:focus:bg-slate-800 border border-sky-200/50 dark:border-sky-800/50 focus:border-sky-500 rounded text-xs focus:outline-hidden"
+                        />
                       </td>
 
                       {/* 12. Accuracy % */}
-                      <td className="py-3 px-3 text-center font-mono whitespace-nowrap">
+                      <td className="py-2 px-2 text-center font-mono whitespace-nowrap">
                         {item.accuracy !== undefined ? (
                           <span
                             className={`inline-flex px-1.5 py-0.5 rounded text-[11px] font-bold ${
@@ -665,9 +764,16 @@ export const WeeklyQuizView: React.FC = () => {
                         )}
                       </td>
 
-                      {/* 13. Time Taken */}
-                      <td className="py-3 px-3 text-center font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                        {item.timeTaken || '—'}
+                      {/* 13. Time Taken (Editable with Keyboard!) */}
+                      <td className="py-2 px-2 text-center whitespace-nowrap">
+                        <input
+                          type="text"
+                          defaultValue={item.timeTaken || ''}
+                          key={`qtt_${item.id}_${item.timeTaken}`}
+                          onBlur={(e) => handleInlineStringChange(item, 'timeTaken', e.target.value)}
+                          placeholder="e.g. 20m"
+                          className="w-18 px-1.5 py-1 text-center font-mono text-xs bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-sky-500 rounded text-slate-800 dark:text-slate-200 focus:outline-hidden"
+                        />
                       </td>
 
                       {/* 14. Remarks (editable inline) */}

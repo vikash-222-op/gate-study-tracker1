@@ -16,7 +16,7 @@ import { RevisionItem } from '../../types';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { BulkActionBar } from '../common/BulkActionBar';
-import { exportTableToSpreadsheet } from '../../services/excelEngine';
+import { exportTableToSpreadsheet, STANDARD_GATE_SUBJECTS } from '../../services/excelEngine';
 import { UniversalPasteModal } from '../common/UniversalPasteModal';
 import { SAMPLE_REVISIONS, getWithSampleFallback } from '../../services/sampleData';
 
@@ -61,6 +61,30 @@ export const RevisionTrackerView: React.FC = () => {
     return Array.from(set).sort();
   }, [displayRevisions]);
 
+  // All available subjects for dropdown selection (GATE CS standards + user existing)
+  const allAvailableSubjects = useMemo(() => {
+    const set = new Set<string>(STANDARD_GATE_SUBJECTS);
+    state.revisionTracker.forEach(r => r.subject && set.add(r.subject));
+    state.lectureTracker.forEach(l => l.subject && set.add(l.subject));
+    return Array.from(set).sort();
+  }, [state.revisionTracker, state.lectureTracker]);
+
+  // Unassigned / General subjects detection
+  const unassignedItems = useMemo(() => {
+    return state.revisionTracker.filter(r => !r.subject || r.subject === 'General' || r.subject === '—' || r.subject === '-');
+  }, [state.revisionTracker]);
+
+  const handleBatchAssignSubject = async (newSubject: string) => {
+    if (!newSubject) return;
+    const updated = state.revisionTracker.map(r => {
+      if (!r.subject || r.subject === 'General' || r.subject === '—' || r.subject === '-') {
+        return { ...r, subject: newSubject };
+      }
+      return r;
+    });
+    await importBulkData({ revisionTracker: updated }, 'update');
+  };
+
   // Overall metrics
   const totalModules = displayRevisions.length;
   const fullyRevised = displayRevisions.filter(r => r.completed || (r.revision1 && r.revision2 && r.revision3)).length;
@@ -96,18 +120,30 @@ export const RevisionTrackerView: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  const ensureRealRevision = async (item: RevisionItem): Promise<RevisionItem> => {
+    if (!item.isSample) return item;
+    const realItems: RevisionItem[] = displayRevisions.map(r => ({
+      ...r,
+      id: r.id === item.id ? `rev_${Date.now()}_${Math.random().toString(36).substr(2, 5)}` : `rev_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      isSample: undefined
+    }));
+    await importBulkData({ revisionTracker: realItems }, 'add');
+    const matched = realItems.find(r => r.module === item.module && r.subject === item.subject) || realItems[0];
+    return matched;
+  };
+
   const handleToggleDone = async (item: RevisionItem) => {
-    if (item.isSample) return;
+    const target = await ensureRealRevision(item);
     await updateRevision({
-      ...item,
-      completed: !item.completed
+      ...target,
+      completed: !target.completed
     });
   };
 
   const handleQuickLogRevision = async (item: RevisionItem, slot: 1 | 2 | 3) => {
-    if (item.isSample) return;
+    const target = await ensureRealRevision(item);
     const today = new Date().toLocaleDateString('en-CA');
-    const updated: RevisionItem = { ...item };
+    const updated: RevisionItem = { ...target };
     if (slot === 1) {
       updated.revision1 = today;
       updated.revision1Date = today;
@@ -130,8 +166,22 @@ export const RevisionTrackerView: React.FC = () => {
   };
 
   const handleInlineRemarkChange = async (item: RevisionItem, newRemarks: string) => {
-    if (item.isSample) return;
-    await updateRevision({ ...item, remarks: newRemarks.trim() });
+    const target = await ensureRealRevision(item);
+    await updateRevision({ ...target, remarks: newRemarks.trim() });
+  };
+
+  const handleInlineFieldChange = async (item: RevisionItem, field: 'subject' | 'module' | 'revision1' | 'revision2' | 'revision3', value: string) => {
+    const target = await ensureRealRevision(item);
+    const updated: RevisionItem = { ...target, [field]: value.trim() };
+    if (field === 'revision1') updated.revision1Date = value.trim();
+    if (field === 'revision2') updated.revision2Date = value.trim();
+    if (field === 'revision3') updated.revision3Date = value.trim();
+    const latest = updated.revision3 || updated.revision2 || updated.revision1 || updated.lastRevision;
+    updated.lastRevision = latest;
+    if (updated.revision1 && updated.revision2 && updated.revision3) {
+      updated.completed = true;
+    }
+    await updateRevision(updated);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -330,6 +380,40 @@ export const RevisionTrackerView: React.FC = () => {
         </div>
       </div>
 
+      {/* Unassigned / Missing Subject Notice */}
+      {unassignedItems.length > 0 && (
+        <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-md bg-amber-200/80 dark:bg-amber-900 text-amber-900 dark:text-amber-200 font-bold text-[11px] shrink-0">
+              Action Required
+            </span>
+            <span className="text-amber-900 dark:text-amber-200 font-medium">
+              Found <strong>{unassignedItems.length}</strong> module(s) with unassigned subject (General/Blank). Quick assign to:
+            </span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
+            <button
+              onClick={() => handleBatchAssignSubject('C Programming')}
+              className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg text-xs shadow-xs transition-colors cursor-pointer"
+            >
+              Assign to C Programming
+            </button>
+            <select
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) handleBatchAssignSubject(e.target.value);
+              }}
+              className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg text-xs text-slate-800 dark:text-slate-200 font-medium cursor-pointer"
+            >
+              <option value="" disabled>Other Subject...</option>
+              {STANDARD_GATE_SUBJECTS.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 flex flex-wrap items-center gap-3 shadow-xs">
         <div className="relative flex-1 min-w-[180px]">
@@ -497,30 +581,58 @@ export const RevisionTrackerView: React.FC = () => {
                           {isDone && <CheckCircle2 className="w-3.5 h-3.5" />}
                         </button>
                       </td>
-                      <td className={`py-3 px-4 font-semibold text-slate-900 dark:text-white whitespace-nowrap ${isDone ? 'line-through text-slate-500 dark:text-slate-400' : ''}`}>
+                      <td className="py-2 px-3 font-semibold text-slate-900 dark:text-white whitespace-nowrap min-w-[150px]">
                         <div className="flex items-center gap-1.5">
                           {item.isSample && (
                             <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 no-underline">
                               SAMPLE
                             </span>
                           )}
-                          <span>{item.subject}</span>
+                          <select
+                            value={item.subject || ''}
+                            onChange={(e) => handleInlineFieldChange(item, 'subject', e.target.value)}
+                            className={`px-2 py-1 text-xs font-semibold rounded bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-purple-500 cursor-pointer focus:outline-hidden ${
+                              !item.subject || item.subject === 'General' || item.subject === '—' || item.subject === '-'
+                                ? 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700'
+                                : 'text-slate-900 dark:text-white'
+                            }`}
+                            title="Click to select or change subject"
+                          >
+                            {!item.subject && <option value="">Select Subject</option>}
+                            {item.subject === 'General' && <option value="General">General (Unassigned)</option>}
+                            {allAvailableSubjects.map(s => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
                         </div>
                       </td>
-                      <td className={`py-3 px-4 font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap ${isDone ? 'line-through text-slate-400 dark:text-slate-500' : ''}`}>
-                        {item.module}
+                      <td className="py-2 px-3 min-w-[140px]">
+                        <input
+                          type="text"
+                          defaultValue={item.module || ''}
+                          key={`mod_${item.id}_${item.module}`}
+                          onBlur={(e) => handleInlineFieldChange(item, 'module', e.target.value)}
+                          placeholder="Module / Topic..."
+                          className="w-full px-2 py-1 text-xs font-medium bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-purple-500 rounded text-slate-800 dark:text-slate-200 focus:outline-hidden"
+                        />
                       </td>
 
                       {/* Revision 1 */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                      <td className="py-2 px-2 text-center whitespace-nowrap">
                         {item.revision1 ? (
-                          <span className={`font-mono text-xs font-semibold px-2 py-0.5 rounded ${isDone ? 'line-through text-slate-400 bg-slate-100 dark:bg-slate-800' : 'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40'}`}>
-                            {item.revision1}
-                          </span>
+                          <div className="inline-flex items-center gap-1 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded px-1.5 py-0.5">
+                            <input
+                              type="date"
+                              defaultValue={item.revision1}
+                              key={`r1_${item.id}_${item.revision1}`}
+                              onChange={(e) => handleInlineFieldChange(item, 'revision1', e.target.value)}
+                              className="font-mono text-xs font-semibold text-sky-700 dark:text-sky-300 bg-transparent border-none p-0 cursor-pointer focus:outline-hidden"
+                            />
+                          </div>
                         ) : (
                           <button
                             onClick={() => handleQuickLogRevision(item, 1)}
-                            className="text-[11px] text-slate-400 hover:text-sky-600 hover:underline cursor-pointer"
+                            className="px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-sky-100 dark:hover:bg-sky-900/40 text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-sky-600 transition-colors cursor-pointer"
                           >
                             + Log Rev 1
                           </button>
@@ -528,15 +640,21 @@ export const RevisionTrackerView: React.FC = () => {
                       </td>
 
                       {/* Revision 2 */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                      <td className="py-2 px-2 text-center whitespace-nowrap">
                         {item.revision2 ? (
-                          <span className={`font-mono text-xs font-semibold px-2 py-0.5 rounded ${isDone ? 'line-through text-slate-400 bg-slate-100 dark:bg-slate-800' : 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40'}`}>
-                            {item.revision2}
-                          </span>
+                          <div className="inline-flex items-center gap-1 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded px-1.5 py-0.5">
+                            <input
+                              type="date"
+                              defaultValue={item.revision2}
+                              key={`r2_${item.id}_${item.revision2}`}
+                              onChange={(e) => handleInlineFieldChange(item, 'revision2', e.target.value)}
+                              className="font-mono text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-transparent border-none p-0 cursor-pointer focus:outline-hidden"
+                            />
+                          </div>
                         ) : (
                           <button
                             onClick={() => handleQuickLogRevision(item, 2)}
-                            className="text-[11px] text-slate-400 hover:text-indigo-600 hover:underline cursor-pointer"
+                            className="px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
                           >
                             + Log Rev 2
                           </button>
@@ -544,15 +662,21 @@ export const RevisionTrackerView: React.FC = () => {
                       </td>
 
                       {/* Revision 3 */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                      <td className="py-2 px-2 text-center whitespace-nowrap">
                         {item.revision3 ? (
-                          <span className={`font-mono text-xs font-semibold px-2 py-0.5 rounded ${isDone ? 'line-through text-slate-400 bg-slate-100 dark:bg-slate-800' : 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/40'}`}>
-                            {item.revision3}
-                          </span>
+                          <div className="inline-flex items-center gap-1 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded px-1.5 py-0.5">
+                            <input
+                              type="date"
+                              defaultValue={item.revision3}
+                              key={`r3_${item.id}_${item.revision3}`}
+                              onChange={(e) => handleInlineFieldChange(item, 'revision3', e.target.value)}
+                              className="font-mono text-xs font-semibold text-purple-700 dark:text-purple-300 bg-transparent border-none p-0 cursor-pointer focus:outline-hidden"
+                            />
+                          </div>
                         ) : (
                           <button
                             onClick={() => handleQuickLogRevision(item, 3)}
-                            className="text-[11px] text-slate-400 hover:text-purple-600 hover:underline cursor-pointer"
+                            className="px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-purple-100 dark:hover:bg-purple-900/40 text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-purple-600 transition-colors cursor-pointer"
                           >
                             + Log Rev 3
                           </button>
@@ -565,15 +689,14 @@ export const RevisionTrackerView: React.FC = () => {
                       </td>
 
                       {/* Inline Editable Remarks */}
-                      <td className="py-3 px-4 min-w-[200px]">
+                      <td className="py-2 px-3 min-w-[200px]">
                         <input
                           type="text"
                           defaultValue={item.remarks || ''}
+                          key={`rem_${item.id}_${item.remarks}`}
                           onBlur={(e) => handleInlineRemarkChange(item, e.target.value)}
                           placeholder="Type remarks freely..."
-                          className={`w-full px-2 py-1 text-xs bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-purple-500 rounded text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-hidden ${
-                            isDone ? 'line-through text-slate-400' : ''
-                          }`}
+                          className="w-full px-2 py-1 text-xs bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-purple-500 rounded text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-hidden"
                         />
                       </td>
 
@@ -735,6 +858,7 @@ export const RevisionTrackerView: React.FC = () => {
         isOpen={isPasteModalOpen}
         onClose={() => setIsPasteModalOpen(false)}
         targetSection="revision_tracker"
+        initialSubject={selectedSubject !== 'All' ? selectedSubject : ''}
       />
 
       {/* Bulk Delete Confirmation Dialog */}

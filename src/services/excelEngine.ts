@@ -360,7 +360,12 @@ export const STANDARD_GATE_SUBJECTS = [
 
 export function detectSubjectFromCode(code: string): string | undefined {
   if (!code) return undefined;
-  const match = code.trim().match(/^([A-Za-z]+)[-_0-9]/);
+  const s = code.trim();
+  // Direct match for C codes like C-01, C01, C_01, C 01, C-1, C1, CP-01
+  if (/^C[-_ ]?\d+/i.test(s) || /^CP[-_ ]?\d+/i.test(s) || /^CPROG[-_ ]?\d+/i.test(s)) {
+    return 'C Programming';
+  }
+  const match = s.match(/^([A-Za-z]+)[-_0-9]/);
   if (!match) return undefined;
   const prefix = match[1].toUpperCase();
   const map: Record<string, string> = {
@@ -376,7 +381,11 @@ export function detectSubjectFromCode(code: string): string | undefined {
     DS: 'Data Structures',
     DSA: 'Data Structures & Algorithms',
     PDS: 'Programming and Data Structures',
+    C: 'C Programming',
     CP: 'C Programming',
+    CPROG: 'C Programming',
+    PROG: 'C Programming',
+    CLANG: 'C Programming',
     ALGO: 'Algorithms',
     ALG: 'Algorithms',
     EM: 'Engineering Mathematics',
@@ -406,30 +415,173 @@ function looksLikeDuration(val: any): boolean {
   return /^\d+\s*(?:min|mins|minutes|m|h|hr|hrs|hours|s|sec)$/i.test(s) || /^\d+:\d{2}/.test(s);
 }
 
+export function looksLikeDate(val: any): boolean {
+  if (val === undefined || val === null) return false;
+  if (val instanceof Date) return true;
+  const s = String(val).trim();
+  if (!s || s === '—' || s === '-') return false;
+  if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(s)) return true;
+  if (/^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/.test(s)) return true;
+  if (/^\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{2,4}$/i.test(s)) return true;
+  const d = new Date(s);
+  return !isNaN(d.getTime()) && s.length >= 6;
+}
+
+export function canonicalizeSubject(raw: any, allowCustom: boolean = false): string | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const s = String(raw).trim();
+  if (!s || s === '—' || s === '-' || s.toLowerCase() === 'general') return undefined;
+
+  // C Programming checks
+  if (/^(?:c|c\s*programming|c\s*prog|c\s*language|programming\s*in\s*c|c-programming|c\s*programming\s*language)$/i.test(s)) {
+    return 'C Programming';
+  }
+  // Operating Systems
+  if (/^(?:os|operating\s*systems?)$/i.test(s)) {
+    return 'Operating Systems';
+  }
+  // Computer Networks
+  if (/^(?:cn|computer\s*networks?|networking)$/i.test(s)) {
+    return 'Computer Networks';
+  }
+  // DBMS
+  if (/^(?:dbms|database(?:s|\s*management\s*systems?)?|db)$/i.test(s)) {
+    return 'DBMS';
+  }
+  // Theory of Computation
+  if (/^(?:toc|theory\s*of\s*computation|automata)$/i.test(s)) {
+    return 'Theory of Computation';
+  }
+  // Compiler Design
+  if (/^(?:cd|compiler(?:\s*design)?)$/i.test(s)) {
+    return 'Compiler Design';
+  }
+  // COA
+  if (/^(?:coa|co|computer\s*organization(?:\s*(?:&|and)\s*architecture)?|architecture)$/i.test(s)) {
+    return 'Computer Organization and Architecture';
+  }
+  // Digital Logic
+  if (/^(?:dl|dld|digital\s*logic(?:\s*design)?)$/i.test(s)) {
+    return 'Digital Logic';
+  }
+  // Algorithms
+  if (/^(?:algo|algorithms?)$/i.test(s)) {
+    return 'Algorithms';
+  }
+  // Data Structures
+  if (/^(?:ds|dsa|data\s*structures?(?:\s*(?:&|and)\s*algorithms?)?)$/i.test(s)) {
+    return 'Data Structures';
+  }
+  // Programming and Data Structures
+  if (/^(?:pds|programming\s*(?:&|and)\s*data\s*structures?)$/i.test(s)) {
+    return 'Programming and Data Structures';
+  }
+  // Discrete Mathematics
+  if (/^(?:dm|discrete\s*mathematics?|discrete\s*maths?)$/i.test(s)) {
+    return 'Discrete Mathematics';
+  }
+  // Engineering Mathematics
+  if (/^(?:em|engineering\s*mathematics?|engineering\s*maths?|math(?:s)?)$/i.test(s)) {
+    return 'Engineering Mathematics';
+  }
+  // General Aptitude
+  if (/^(?:ga|aptitude|general\s*aptitude|verbal)$/i.test(s)) {
+    return 'General Aptitude';
+  }
+
+  // Exact or case-insensitive match against standard subjects
+  const matched = STANDARD_GATE_SUBJECTS.find(std => std.toLowerCase() === s.toLowerCase());
+  if (matched) return matched;
+
+  // Don't treat numbers, booleans, or dates as subjects
+  if (/^\d+$/.test(s) || /^(?:true|false|done|yes|no)$/i.test(s) || looksLikeDate(s)) {
+    return undefined;
+  }
+
+  return allowCustom ? s : undefined;
+}
+
+export function detectSubjectFromText(text: string): string | undefined {
+  if (!text) return undefined;
+  const t = text.toLowerCase();
+
+  // C Programming
+  if (
+    /\b(?:c\s*programming|programming\s*in\s*c|c\s*prog|c\s*language|pointers?|dynamic\s*memory|malloc|calloc|realloc|free\(\)|structures?\s*(?:in\s*c|and\s*unions?)?|unions?|recursion|file\s*handling|storage\s*classes?|preprocessor|macros?|bitwise\s*operators?|control\s*statements?|basics?\s*of\s*c)\b/i.test(t) ||
+    /\bc[-_ ]?\d+\b/i.test(t)
+  ) {
+    return 'C Programming';
+  }
+
+  // Operating Systems
+  if (/\b(?:operating\s*systems?|process\s*sync|deadlocks?|cpu\s*scheduling|paging|virtual\s*memory|semaphores?|monitors?|fork\(\)|disk\s*scheduling|page\s*replacement)\b/i.test(t)) {
+    return 'Operating Systems';
+  }
+
+  // Computer Networks
+  if (/\b(?:computer\s*networks?|networking|osi\s*model|tcp\/ip|sliding\s*window|selective\s*repeat|go\s*back\s*n|ipv4|ipv6|subnetting|cidr|dvr|link\s*state|congestion\s*control|dns|dhcp|socket\s*programming)\b/i.test(t)) {
+    return 'Computer Networks';
+  }
+
+  // DBMS
+  if (/\b(?:dbms|database|relational\s*algebra|sql|normalization|bcnf|3nf|transactions?|acid|serializability|two\s*phase\s*locking|b\+?\s*tree|indexing)\b/i.test(t)) {
+    return 'DBMS';
+  }
+
+  // Theory of Computation
+  if (/\b(?:theory\s*of\s*computation|automata|dfa|nfa|regular\s*languages?|pumping\s*lemma|context\s*free|cfg|pushdown\s*automata|pda|turing\s*machines?|decidability|undecidability|halting\s*problem)\b/i.test(t)) {
+    return 'Theory of Computation';
+  }
+
+  // Compiler Design
+  if (/\b(?:compiler\s*design|compiler|lexical\s*analysis|parsing|ll\(1\)|lr\(0\)|slr\(1\)|lr\(1\)|lalr\(1\)|syntax\s*directed|sdt|three\s*address\s*code|code\s*optimization|data\s*flow)\b/i.test(t)) {
+    return 'Compiler Design';
+  }
+
+  // Computer Organization and Architecture
+  if (/\b(?:computer\s*organization|architecture|coa|pipelining|pipeline\s*hazards?|cache\s*memory|addressing\s*modes?|data\s*path|control\s*unit|instruction\s*cycle|dma|interrupts?)\b/i.test(t)) {
+    return 'Computer Organization and Architecture';
+  }
+
+  // Digital Logic
+  if (/\b(?:digital\s*logic|boolean\s*algebra|k-map|multiplexers?|decoders?|adders?|latches|flip\s*flops?|counters?|registers?|number\s*systems?)\b/i.test(t)) {
+    return 'Digital Logic';
+  }
+
+  // Algorithms
+  if (/\b(?:algorithms?|asymptotic|divide\s*and\s*conquer|dynamic\s*programming|greedy|dijkstra|bellman\s*ford|floyd\s*warshall|kruskal|prim|lcs|matrix\s*chain|0\/1\s*knapsack|bfs|dfs|topological\s*sort)\b/i.test(t)) {
+    return 'Algorithms';
+  }
+
+  // Data Structures
+  if (/\b(?:data\s*structures?|binary\s*search\s*tree|bst|avl\s*tree|heaps?|priority\s*queues?|hashing|linked\s*lists?|stacks?\s*(?:and|&)\s*queues?)\b/i.test(t)) {
+    return 'Data Structures';
+  }
+
+  // Discrete Mathematics
+  if (/\b(?:discrete\s*mathematics?|propositional\s*logic|predicate\s*logic|first\s*order\s*logic|graph\s*theory|combinatorics|generating\s*functions?|recurrence\s*relations?|group\s*theory|poset|lattice)\b/i.test(t)) {
+    return 'Discrete Mathematics';
+  }
+
+  // Engineering Mathematics
+  if (/\b(?:engineering\s*mathematics?|linear\s*algebra|eigenvalues?|eigenvectors?|calculus|maxima\s*and\s*minima|conditional\s*probability|bayes\s*theorem|random\s*variables?|normal\s*distribution|poisson)\b/i.test(t)) {
+    return 'Engineering Mathematics';
+  }
+
+  // General Aptitude
+  if (/\b(?:general\s*aptitude|numerical\s*ability|verbal\s*ability|reading\s*comprehension|spatial\s*aptitude)\b/i.test(t)) {
+    return 'General Aptitude';
+  }
+
+  return undefined;
+}
+
 function isKnownSubject(val: string): boolean {
-  if (!val) return false;
-  const s = val.trim();
-  const patterns = [
-    /^operating\s*systems?$/i, /^os$/i,
-    /^dbms$/i, /^database(?:s|\s*management\s*systems?)?$/i,
-    /^computer\s*networks?$/i, /^cn$/i,
-    /^theory\s*of\s*computation$/i, /^toc$/i,
-    /^compiler\s*design$/i, /^cd$/i,
-    /^computer\s*organization(?:\s*(?:&|and)\s*architecture)?$/i, /^coa?$/i,
-    /^digital\s*logic(?:\s*design)?$/i, /^dl[d]?$/i,
-    /^algorithms?$/i, /^algo$/i,
-    /^programming\s*(?:&|and)\s*data\s*structures?$/i, /^pds$/i,
-    /^data\s*structures?(?:\s*(?:&|and)\s*algorithms?)?$/i, /^ds[a]?$/i,
-    /^c\s*programming$/i,
-    /^discrete\s*mathematics?$/i, /^dm$/i,
-    /^engineering\s*mathematics?$/i, /^em$/i, /^math(?:s)?$/i,
-    /^general\s*aptitude$/i, /^ga$/i, /^aptitude$/i
-  ];
-  return patterns.some(p => p.test(s));
+  return canonicalizeSubject(val) !== undefined;
 }
 
 // Map raw rows to LectureItem[]
-export function mapToLectureTracker(rows: Record<string, any>[]): LectureItem[] {
+export function mapToLectureTracker(rows: Record<string, any>[], defaultSubject?: string): LectureItem[] {
   if (!rows || rows.length === 0) return [];
 
   const candidateKeys = [
@@ -633,14 +785,45 @@ export function mapToLectureTracker(rows: Record<string, any>[]): LectureItem[] 
       }
     }
 
-    // 2. If subject is still undefined, check if lectureNo has a recognized code prefix (e.g. DM-01 -> Discrete Mathematics, OS-01 -> Operating Systems)
+    // 2. If subject is still undefined, check if lectureNo has a recognized code prefix (e.g. DM-01 -> Discrete Mathematics, OS-01 -> Operating Systems, C-01 -> C Programming)
     const lecNoStr = rawLectureNo !== undefined && rawLectureNo !== null ? String(rawLectureNo).trim() : '';
     if (!subject && lecNoStr) {
       subject = detectSubjectFromCode(lecNoStr);
     }
 
-    // 3. DO NOT USE DM AS A DEFAULT FALLBACK!
-    // If subject is missing, leave it as undefined (blank). Do not force to DM.
+    // 3. Keyword scan for C Programming and other GATE subjects if still missing
+    if (!subject) {
+      const fullText = `${rawSubject || ''} ${rawModule || ''} ${rawTitle || ''} ${rawLectureNo || ''}`.toLowerCase();
+      if (/\b(?:c\s*programming|programming\s*in\s*c|c\s*prog|c\s*language|pointers?|structures?\s*in\s*c)\b/i.test(fullText) || /^c[-_ ]?\d+/i.test(lecNoStr)) {
+        subject = 'C Programming';
+      } else if (/\b(?:data\s*structures?|dsa)\b/i.test(fullText)) {
+        subject = 'Data Structures';
+      } else if (/\b(?:operating\s*systems?|os)\b/i.test(fullText)) {
+        subject = 'Operating Systems';
+      } else if (/\b(?:computer\s*networks?|networking)\b/i.test(fullText)) {
+        subject = 'Computer Networks';
+      } else if (/\b(?:dbms|database)\b/i.test(fullText)) {
+        subject = 'DBMS';
+      } else if (/\b(?:theory\s*of\s*computation|toc|automata)\b/i.test(fullText)) {
+        subject = 'Theory of Computation';
+      } else if (/\b(?:compiler\s*design|compiler)\b/i.test(fullText)) {
+        subject = 'Compiler Design';
+      } else if (/\b(?:computer\s*organization|coa|architecture)\b/i.test(fullText)) {
+        subject = 'Computer Organization and Architecture';
+      } else if (/\b(?:digital\s*logic|boolean\s*algebra)\b/i.test(fullText)) {
+        subject = 'Digital Logic';
+      } else if (/\b(?:algorithms?|sorting|graph\s*algorithms?)\b/i.test(fullText)) {
+        subject = 'Algorithms';
+      } else if (/\b(?:discrete\s*mathematics?|propositional\s*logic|graph\s*theory)\b/i.test(fullText)) {
+        subject = 'Discrete Mathematics';
+      } else if (/\b(?:engineering\s*mathematics?|linear\s*algebra|calculus)\b/i.test(fullText)) {
+        subject = 'Engineering Mathematics';
+      } else if (/\b(?:general\s*aptitude|aptitude|verbal)\b/i.test(fullText)) {
+        subject = 'General Aptitude';
+      } else if (defaultSubject && defaultSubject.trim()) {
+        subject = defaultSubject.trim();
+      }
+    }
 
     // Status parsing
     let status: 'Not Started' | 'Completed' | 'Skipped' = 'Not Started';
@@ -804,29 +987,146 @@ export function mapToPYQTracker(rows: Record<string, any>[]): PYQItem[] {
 }
 
 // Map raw rows to RevisionItem[] (Topic-Level: Subject | Module | Topic | 1st Revision Date | 2nd Revision Date | 3rd Revision Date)
-export function mapToRevisionTracker(rows: Record<string, any>[]): RevisionItem[] {
+export function mapToRevisionTracker(rows: Record<string, any>[], defaultSubject?: string): RevisionItem[] {
+  if (!rows || rows.length === 0) return [];
+
   const candidateKeys = [
-    ['checkbox', 'done', 'completed', 'status'],
-    ['subject', 'subj'],
-    ['module', 'mod'],
-    ['topic', 'topictitle', 'topicname', 'name'],
-    ['1strevisiondate', 'revision1date', '1strevision', 'revision1', 'rev1', 'rev1date'],
-    ['2ndrevisiondate', 'revision2date', '2ndrevision', 'revision2', 'rev2', 'rev2date'],
-    ['3rdrevisiondate', 'revision3date', '3rdrevision', 'revision3', 'rev3', 'rev3date'],
-    ['remarks', 'notes', 'comment']
+    ['checkbox', 'done', 'completed', 'status', 'complete', 'mastered', 'revstatus'], // 0
+    ['subject', 'subj', 'sub', 'subjects', 'subjectname', 'gatesubject', 'course', 'coursename', 'paper', 'fullsubjectname', 'subjecttitle'], // 1
+    ['module', 'mod', 'chapter', 'section', 'unit', 'chaptername', 'modulename'], // 2
+    ['topic', 'topictitle', 'topicname', 'name', 'title'], // 3
+    ['1strevisiondate', 'revision1date', '1strevision', 'revision1', 'rev1', 'rev1date', 'firstrevision', 'firstrev', 'r1', 'rev1st', 'firstrevdate', 'revision1st'], // 4
+    ['2ndrevisiondate', 'revision2date', '2ndrevision', 'revision2', 'rev2', 'rev2date', 'secondrevision', 'secondrev', 'r2', 'rev2nd', 'secondrevdate', 'revision2nd'], // 5
+    ['3rdrevisiondate', 'revision3date', '3rdrevision', 'revision3', 'rev3', 'rev3date', 'thirdrevision', 'thirdrev', 'r3', 'rev3rd', 'thirdrevdate', 'revision3rd'], // 6
+    ['remarks', 'notes', 'comment', 'comments', 'desc', 'description'], // 7
+    ['lastrevision', 'lastrevisiondate', 'lastrev', 'latestrevision'], // 8
+    ['srno', 'sno', 'slno', 'serialno', '#', 'no'] // 9
   ];
+
+  const firstRow = rows[0];
+  const keys = Object.keys(firstRow);
+  const allCandidateNormalized = candidateKeys.flat().map(normalizeHeader);
+  const hasMatchedNamedHeaders = keys.some(k => {
+    const norm = normalizeHeader(k);
+    return !/^column\s*\d+$/i.test(norm) && allCandidateNormalized.includes(norm);
+  });
 
   const seenMap = new Map<string, RevisionItem>();
 
   rows.forEach((r, i) => {
-    const subject = String(getRowValue(r, candidateKeys[1]) || 'General').trim();
-    const module = String(getRowValue(r, candidateKeys[2]) || 'Module 1').trim();
-    const topic = String(getRowValue(r, candidateKeys[3]) || `Topic ${i + 1}`).trim();
-    const key = `${subject.toLowerCase()}:::${module.toLowerCase()}:::${topic.toLowerCase()}`;
+    let rawSubject: any = undefined;
+    let rawModule: any = undefined;
+    let rawTopic: any = undefined;
+    let rawR1: any = undefined;
+    let rawR2: any = undefined;
+    let rawR3: any = undefined;
+    let rawLast: any = undefined;
+    let rawRemarks: any = undefined;
+    let rawDone: any = undefined;
 
-    const r1 = toDateString(getRowValue(r, candidateKeys[4]));
-    const r2 = toDateString(getRowValue(r, candidateKeys[5]));
-    const r3 = toDateString(getRowValue(r, candidateKeys[6]));
+    if (hasMatchedNamedHeaders) {
+      rawSubject = getRowValue(r, candidateKeys[1]);
+      rawModule = getRowValue(r, candidateKeys[2]);
+      rawTopic = getRowValue(r, candidateKeys[3]);
+      rawR1 = getRowValue(r, candidateKeys[4]);
+      rawR2 = getRowValue(r, candidateKeys[5]);
+      rawR3 = getRowValue(r, candidateKeys[6]);
+      rawRemarks = getRowValue(r, candidateKeys[7]);
+      rawLast = getRowValue(r, candidateKeys[8]);
+      rawDone = getRowValue(r, candidateKeys[0]);
+    } else {
+      // Positional / Pattern mapping for headerless data (e.g. Column 1, Column 2, ...)
+      const colValues = keys.map(k => r[k]);
+      const workingCols = [...colValues];
+
+      // Check if Col 0 is serial number (e.g. 1, 2, 3...)
+      const firstColStr = workingCols[0] !== undefined && workingCols[0] !== null ? String(workingCols[0]).trim() : '';
+      if (/^\d+$/.test(firstColStr) && workingCols.length >= 3) {
+        workingCols.shift();
+      } else if (/^(?:true|false|done|completed|yes|no|✓)$/i.test(firstColStr)) {
+        rawDone = workingCols.shift();
+      }
+
+      const c0 = workingCols[0] !== undefined && workingCols[0] !== null ? String(workingCols[0]).trim() : '';
+      const c1 = workingCols[1] !== undefined && workingCols[1] !== null ? String(workingCols[1]).trim() : '';
+      const c2 = workingCols[2] !== undefined && workingCols[2] !== null ? String(workingCols[2]).trim() : '';
+
+      if (isKnownSubject(c0)) {
+        // Layout: Subject | Module | Rev 1 | Rev 2 | Rev 3 | Last Rev | Remarks
+        rawSubject = workingCols[0];
+        rawModule = workingCols[1];
+        rawR1 = workingCols[2];
+        rawR2 = workingCols[3];
+        rawR3 = workingCols[4];
+        rawLast = workingCols[5];
+        rawRemarks = workingCols[6];
+      } else if (looksLikeDate(c1)) {
+        // Layout: Module | Rev 1 Date | Rev 2 Date | Rev 3 Date | Last Rev | Remarks
+        rawModule = workingCols[0];
+        rawR1 = workingCols[1];
+        rawR2 = workingCols[2];
+        rawR3 = workingCols[3];
+        rawLast = workingCols[4];
+        rawRemarks = workingCols[5];
+      } else if (looksLikeDate(c2)) {
+        // Layout: Module | Topic | Rev 1 Date | Rev 2 Date | Rev 3 Date ...
+        rawModule = workingCols[0];
+        rawTopic = workingCols[1];
+        rawR1 = workingCols[2];
+        rawR2 = workingCols[3];
+        rawR3 = workingCols[4];
+        rawLast = workingCols[5];
+        rawRemarks = workingCols[6];
+      } else {
+        // Fallback: Module | Rev 1 | Rev 2 | Rev 3 | Remarks
+        rawModule = workingCols[0];
+        rawR1 = workingCols[1];
+        rawR2 = workingCols[2];
+        rawR3 = workingCols[3];
+        rawRemarks = workingCols[4];
+      }
+    }
+
+    // Resolve Subject intelligently:
+    // 1. Try canonicalizing rawSubject if provided (allow custom only if from named header)
+    let subject = canonicalizeSubject(rawSubject, hasMatchedNamedHeaders) || '';
+
+    // 2. If subject is still missing, try detecting from full row text
+    const fullRowText = Object.values(r).map(v => String(v || '')).join(' ');
+    if (!subject) {
+      subject = detectSubjectFromText(fullRowText) || '';
+    }
+
+    // 3. If still missing, check module / topic text specifically
+    if (!subject && (rawModule || rawTopic)) {
+      subject = detectSubjectFromText(`${rawModule || ''} ${rawTopic || ''}`) || '';
+    }
+
+    // 4. Fallback to defaultSubject if provided
+    if (!subject && defaultSubject && defaultSubject.trim()) {
+      subject = canonicalizeSubject(defaultSubject) || defaultSubject.trim();
+    }
+
+    // 5. If still no subject, default to 'General'
+    if (!subject) {
+      subject = 'General';
+    }
+
+    let module = rawModule !== undefined && rawModule !== null ? String(rawModule).trim() : '';
+    if (!module || module === '—' || module === '-') {
+      module = rawTopic ? String(rawTopic).trim() : `Module ${i + 1}`;
+    }
+
+    const topic = rawTopic ? String(rawTopic).trim() : module;
+
+    const r1 = toDateString(rawR1);
+    const r2 = toDateString(rawR2);
+    const r3 = toDateString(rawR3);
+    const last = toDateString(rawLast) || r3 || r2 || r1;
+    const completed = toBoolean(rawDone) || Boolean(r3);
+    const remarks = rawRemarks !== undefined && rawRemarks !== null ? String(rawRemarks).trim() : '';
+
+    const key = `${subject.toLowerCase()}:::${module.toLowerCase()}`;
 
     const item: RevisionItem = {
       id: `rev_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 5)}`,
@@ -834,21 +1134,27 @@ export function mapToRevisionTracker(rows: Record<string, any>[]): RevisionItem[
       module,
       topic,
       revision1Date: r1,
+      revision1: r1,
       revision2Date: r2,
+      revision2: r2,
       revision3Date: r3,
-      completed: toBoolean(getRowValue(r, candidateKeys[0])) || Boolean(r3),
-      remarks: String(getRowValue(r, candidateKeys[7]) || '').trim(),
-      _customFields: collectCustomFields(r, candidateKeys)
+      revision3: r3,
+      lastRevision: last,
+      completed,
+      remarks,
+      _customFields: hasMatchedNamedHeaders ? collectCustomFields(r, candidateKeys) : undefined
     };
 
     if (!seenMap.has(key)) {
       seenMap.set(key, item);
     } else {
       const existing = seenMap.get(key)!;
-      if (r1 && !existing.revision1Date) existing.revision1Date = r1;
-      if (r2 && !existing.revision2Date) existing.revision2Date = r2;
-      if (r3 && !existing.revision3Date) existing.revision3Date = r3;
-      if (item.completed) existing.completed = true;
+      if (r1 && !existing.revision1Date) { existing.revision1Date = r1; existing.revision1 = r1; }
+      if (r2 && !existing.revision2Date) { existing.revision2Date = r2; existing.revision2 = r2; }
+      if (r3 && !existing.revision3Date) { existing.revision3Date = r3; existing.revision3 = r3; }
+      if (last && !existing.lastRevision) existing.lastRevision = last;
+      if (completed) existing.completed = true;
+      if (remarks && !existing.remarks) existing.remarks = remarks;
     }
   });
 
@@ -1147,7 +1453,12 @@ export function parsePastedSpreadsheet(text: string): {
       /^(?:total\s*questions|correct|wrong|incorrect|blank|unattempted|skipped)$/i,
       /^(?:full\s*marks|total\s*marks|net\s*marks|marks|score|accuracy|accuracy\s*%)$/i,
       /^(?:total\s*pyqs?|solved|remaining|target\s*date)$/i,
-      /^(?:study\s*hours|lecture\s*hours|pyq\s*hours|revision\s*hours)$/i
+      /^(?:study\s*hours|lecture\s*hours|pyq\s*hours|revision\s*hours)$/i,
+      /^(?:1st\s*revision(?:\s*date)?|rev(?:ision)?\s*1(?:\s*date)?|first\s*revision(?:\s*date)?|rev\s*1st|r1|rev1)$/i,
+      /^(?:2nd\s*revision(?:\s*date)?|rev(?:ision)?\s*2(?:\s*date)?|second\s*revision(?:\s*date)?|rev\s*2nd|r2|rev2)$/i,
+      /^(?:3rd\s*revision(?:\s*date)?|rev(?:ision)?\s*3(?:\s*date)?|third\s*revision(?:\s*date)?|rev\s*3rd|r3|rev3)$/i,
+      /^(?:last\s*revision(?:\s*date)?|latest\s*revision(?:\s*date)?|last\s*rev|rev\s*date)$/i,
+      /^(?:revision|revisions|mastery)$/i
     ];
 
     return headerPatterns.some(pat => pat.test(c));
